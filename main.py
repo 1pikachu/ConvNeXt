@@ -213,6 +213,11 @@ def main(args):
     print(args)
     device = torch.device(args.device)
 
+    if args.device == "xpu":
+        import intel_extension_for_pytorch
+    elif args.device == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = False
+
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
@@ -392,7 +397,26 @@ def main(args):
 
     if args.eval:
         print(f"Eval only mode")
-        test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+        with torch.inference_mode():
+            if args.precision == "float16" and args.device == "cuda":
+                print("---- Use autocast fp16 cuda")
+                with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
+                    test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+            elif args.precision == "float16" and args.device == "xpu":
+                print("---- Use autocast fp16 xpu")
+                with torch.xpu.amp.autocast(enabled=True, dtype=torch.float16, cache_enabled=True):
+                    test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+            elif args.precision == "bfloat16" and args.device == "cpu":
+                print("---- Use autocast bf16 cpu")
+                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                    test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+            elif args.precision == "bfloat16" and args.device == "xpu":
+                print("---- Use autocast bf16 xpu")
+                with torch.xpu.amp.autocast(dtype=torch.bfloat16):
+                    test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+            else:
+                print("---- no autocast")
+                test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
         #print(f"Accuracy of the network on {len(dataset_val)} test images: {test_stats['acc1']:.5f}%")
         return
 
