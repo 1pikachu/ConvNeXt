@@ -7,6 +7,8 @@
 
 
 import math
+import os
+import time
 from typing import Iterable, Optional
 import torch
 from timm.data import Mixup
@@ -135,39 +137,31 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 @torch.no_grad()
-def evaluate(data_loader, model, device, use_amp=False):
-    criterion = torch.nn.CrossEntropyLoss()
-
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    header = 'Test:'
-
+def evaluate(args, data_loader, model, device, use_amp=False):
     # switch to evaluation mode
     model.eval()
-    for batch in metric_logger.log_every(data_loader, 10, header):
+
+    total_time = 0.0
+    total_sample = 0
+
+    for i, batch in enumerate(data_loader):
+        if i >= args.num_iter:
+            break
+
         images = batch[0]
-        target = batch[-1]
-
         images = images.to(device, non_blocking=True)
-        target = target.to(device, non_blocking=True)
 
-        # compute output
-        if use_amp:
-            with torch.cuda.amp.autocast():
-                output = model(images)
-                loss = criterion(output, target)
-        else:
-            output = model(images)
-            loss = criterion(output, target)
+        elapsed = time.time()
+        output = model(images)
+        elapsed = time.time() - elapsed
+        print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
+        if i >= args.num_warmup:
+            total_sample += args.batch_size
+            total_time += elapsed
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+    latency = total_time / total_sample * 1000
+    throughput = total_sample / total_time
+    print("inference Latency: {} ms".format(latency))
+    print("inference Throughput: {} samples/s".format(throughput))
 
-        batch_size = images.shape[0]
-        metric_logger.update(loss=loss.item())
-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
-    # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
-
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {}

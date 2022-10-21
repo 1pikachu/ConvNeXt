@@ -48,8 +48,6 @@ def str2bool(v):
 
 def get_args_parser():
     parser = argparse.ArgumentParser('ConvNeXt training and evaluation script for image classification', add_help=False)
-    parser.add_argument('--batch_size', default=64, type=int,
-                        help='Per GPU batch size')
     parser.add_argument('--epochs', default=300, type=int)
     parser.add_argument('--update_freq', default=1, type=int,
                         help='gradient accumulation steps')
@@ -157,8 +155,6 @@ def get_args_parser():
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default=None,
                         help='path where to tensorboard log')
-    parser.add_argument('--device', default='cuda',
-                        help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
 
     parser.add_argument('--resume', default='',
@@ -199,6 +195,17 @@ def get_args_parser():
     parser.add_argument('--wandb_ckpt', type=str2bool, default=False,
                         help="Save model checkpoints as W&B Artifacts.")
 
+    # OOB
+    parser.add_argument('--batch_size', default=1, type=int, help='batch size')
+    parser.add_argument('--precision', default="float32", type=str, help='precision')
+    parser.add_argument('--channels_last', default=1, type=int, help='Use NHWC or not')
+    parser.add_argument('--jit', action='store_true', default=False, help='enable JIT')
+    parser.add_argument('--profile', action='store_true', default=False, help='collect timeline')
+    parser.add_argument('--num_iter', default=200, type=int, help='test iterations')
+    parser.add_argument('--num_warmup', default=20, type=int, help='test warmup')
+    parser.add_argument('--device', default='cpu', type=str, help='cpu, cuda or xpu')
+    parser.add_argument('--nv_fuser', action='store_true', default=False, help='enable nv fuser')
+
     return parser
 
 def main(args):
@@ -210,7 +217,9 @@ def main(args):
     seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
-    cudnn.benchmark = True
+
+    if args.device == "cuda":
+        cudnn.benchmark = True
 
     dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
     if args.disable_eval:
@@ -222,10 +231,10 @@ def main(args):
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
 
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, seed=args.seed,
-    )
-    print("Sampler_train = %s" % str(sampler_train))
+    #sampler_train = torch.utils.data.DistributedSampler(
+    #    dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, seed=args.seed,
+    #)
+    #print("Sampler_train = %s" % str(sampler_train))
     if args.dist_eval:
         if len(dataset_val) % num_tasks != 0:
             print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
@@ -247,18 +256,19 @@ def main(args):
     else:
         wandb_logger = None
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-    )
+    #data_loader_train = torch.utils.data.DataLoader(
+    #    dataset_train, sampler=sampler_train,
+    #    batch_size=args.batch_size,
+    #    num_workers=args.num_workers,
+    #    pin_memory=args.pin_mem,
+    #    drop_last=True,
+    #)
 
     if dataset_val is not None:
         data_loader_val = torch.utils.data.DataLoader(
             dataset_val, sampler=sampler_val,
-            batch_size=int(1.5 * args.batch_size),
+            # batch_size=int(1.5 * args.batch_size),
+            batch_size=int(args.batch_size),
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
             drop_last=False
@@ -329,8 +339,8 @@ def main(args):
     print("LR = %.8f" % args.lr)
     print("Batch size = %d" % total_batch_size)
     print("Update frequent = %d" % args.update_freq)
-    print("Number of training examples = %d" % len(dataset_train))
-    print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
+    #print("Number of training examples = %d" % len(dataset_train))
+    #print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
 
     if args.layer_decay < 1.0 or args.layer_decay > 1.0:
         num_layers = 12 # convnext layers divided into 12 parts, each with a different decayed lr value.
@@ -354,11 +364,11 @@ def main(args):
 
     loss_scaler = NativeScaler() # if args.use_amp is False, this won't be used
 
-    print("Use Cosine LR scheduler")
-    lr_schedule_values = utils.cosine_scheduler(
-        args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
-        warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
-    )
+    #print("Use Cosine LR scheduler")
+    #lr_schedule_values = utils.cosine_scheduler(
+    #    args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
+    #    warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
+    #)
 
     if args.weight_decay_end is None:
         args.weight_decay_end = args.weight_decay
@@ -382,8 +392,8 @@ def main(args):
 
     if args.eval:
         print(f"Eval only mode")
-        test_stats = evaluate(data_loader_val, model, device, use_amp=args.use_amp)
-        print(f"Accuracy of the network on {len(dataset_val)} test images: {test_stats['acc1']:.5f}%")
+        test_stats = evaluate(args, data_loader_val, model, device, use_amp=args.use_amp)
+        #print(f"Accuracy of the network on {len(dataset_val)} test images: {test_stats['acc1']:.5f}%")
         return
 
     max_accuracy = 0.0
