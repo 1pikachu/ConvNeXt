@@ -58,7 +58,7 @@ function generate_core {
         printf " ${OOB_EXEC_HEADER} \
 	    python main.py --model ${model_name} --eval true \
 	    	--resume ${CKPT_DIR} --input_size 224 --drop_path 0.2 \
-		--data_path ${DATASET_DIR} --batch_size ${batch_size} \ 
+		--data_path ${DATASET_DIR} --batch_size ${batch_size} \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
 		--jit --device ${device} \
