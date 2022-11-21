@@ -175,11 +175,11 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                 break
 
             images = batch[0]
-            images = images.to(device, non_blocking=True)
             if args.channels_last:
                 images = images.to(memory_format=torch.channels_last)
             if args.jit and i == 0:
                 try:
+                    images = images.to(device, non_blocking=True)
                     model = torch.jit.trace(model, images, check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -187,6 +187,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                     print("failed to use PyTorch jit mode due to: ", e)
 
             elapsed = time.time()
+            images = images.to(device, non_blocking=True)
             with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
                 output = model(images)
             torch.xpu.synchronize()
@@ -223,11 +224,11 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                     break
 
                 images = batch[0]
-                images = images.to(device, non_blocking=True)
                 if args.channels_last:
                     images = images.to(memory_format=torch.channels_last)
                 if args.jit and i == 0:
                     try:
+                        images = images.to(device, non_blocking=True)
                         model = torch.jit.trace(model, images, check_trace=False, strict=False)
                         print("---- JIT trace enable.")
                     except (RuntimeError, TypeError) as e:
@@ -235,6 +236,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                         print("failed to use PyTorch jit mode due to: ", e)
 
                 elapsed = time.time()
+                images = images.to(device, non_blocking=True)
                 with torch.jit.fuser(fuser_mode):
                     output = model(images)
                 torch.cuda.synchronize()
@@ -260,11 +262,11 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                     break
 
                 images = batch[0]
-                images = images.to(device, non_blocking=True)
                 if args.channels_last:
                     images = images.to(memory_format=torch.channels_last)
                 if args.jit and i == 0:
                     try:
+                        images = images.to(device, non_blocking=True)
                         model = torch.jit.trace(model, images, check_trace=False, strict=False)
                         print("---- JIT trace enable.")
                     except (RuntimeError, TypeError) as e:
@@ -272,6 +274,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                         print("failed to use PyTorch jit mode due to: ", e)
 
                 elapsed = time.time()
+                images = images.to(device, non_blocking=True)
                 output = model(images)
                 elapsed = time.time() - elapsed
                 p.step()
@@ -290,6 +293,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                 images = images.to(memory_format=torch.channels_last)
             if args.jit and i == 0:
                 try:
+                    images = images.to(device, non_blocking=True)
                     model = torch.jit.trace(model, images, check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -297,6 +301,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                     print("failed to use PyTorch jit mode due to: ", e)
 
             elapsed = time.time()
+            images = images.to(device, non_blocking=True)
             with torch.jit.fuser(fuser_mode):
                 output = model(images)
             torch.cuda.synchronize()
@@ -311,11 +316,11 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                 break
 
             images = batch[0]
-            images = images.to(device, non_blocking=True)
             if args.channels_last:
                 images = images.to(memory_format=torch.channels_last)
             if args.jit and i == 0:
                 try:
+                    images = images.to(device, non_blocking=True)
                     model = torch.jit.trace(model, images, check_trace=False, strict=False)
                     print("---- JIT trace enable.")
                 except (RuntimeError, TypeError) as e:
@@ -323,6 +328,7 @@ def evaluate(args, data_loader, model, device, use_amp=False):
                     print("failed to use PyTorch jit mode due to: ", e)
 
             elapsed = time.time()
+            images = images.to(device, non_blocking=True)
             output = model(images)
             if args.device == "xpu":
                 torch.xpu.synchronize()
