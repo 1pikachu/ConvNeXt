@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip install timm==0.4.5 tensorboardX six
+    pip install timm==0.4.5 tensorboardX six --no-deps
 
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
