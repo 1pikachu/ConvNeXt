@@ -165,6 +165,10 @@ def evaluate(args, data_loader, model, device, use_amp=False):
        fuser_mode = "none"
     print("---- fuser mode:", fuser_mode)
 
+    if args.compile:
+        print("----enable compiler")
+        model = torch.compile(model, backend=args.backend, options={"freezing": True})
+
     total_time = 0.0
     total_sample = 0
     profile_len = min(len(data_loader), args.num_iter + args.num_warmup) // 2
