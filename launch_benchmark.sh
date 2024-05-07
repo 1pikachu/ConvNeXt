@@ -57,13 +57,18 @@ function generate_core {
         elif [ "${device}" == "xpu" ];then
             OOB_EXEC_HEADER=" ZE_AFFINITY_MASK=${i} "
         fi
+        if [[ "${addtion_options}" =~ "--compile" ]];then
+            echo "run with compile"
+        else
+            addtion_options+=" --jit "
+        fi
         printf " ${OOB_EXEC_HEADER} \
 	        python main.py --model ${model_name} --eval true \
 	    	    --resume ${CKPT_DIR} --input_size 224 --drop_path 0.2 \
 		        --data_path ${DATASET_DIR} --batch_size ${batch_size} \
 	    	    --num_iter $num_iter --num_warmup $num_warmup \
                 --channels_last $channels_last --precision $precision \
-                --jit --device ${device} \
+                --device ${device} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
