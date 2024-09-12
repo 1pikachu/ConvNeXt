@@ -13,6 +13,7 @@ from typing import Iterable, Optional
 import torch
 from timm.data import Mixup
 from timm.utils import accuracy, ModelEma
+from context_func import context_func
 
 import utils
 
@@ -171,153 +172,8 @@ def evaluate(args, data_loader, model, device, use_amp=False):
 
     total_time = 0.0
     total_sample = 0
-    profile_len = min(len(data_loader), args.num_iter + args.num_warmup) // 2
 
-    if args.profile and args.device == "xpu":
-        for i, batch in enumerate(data_loader):
-            if i >= args.num_iter:
-                break
-
-            images = batch[0]
-            if args.channels_last:
-                images = images.to(memory_format=torch.channels_last)
-            if args.jit and i == 0:
-                try:
-                    images = images.to(device, non_blocking=True)
-                    model = torch.jit.trace(model, images, check_trace=False, strict=False)
-                    print("---- JIT trace enable.")
-                except (RuntimeError, TypeError) as e:
-                    print("---- JIT trace disable.")
-                    print("failed to use PyTorch jit mode due to: ", e)
-
-            elapsed = time.time()
-            images = images.to(device, non_blocking=True)
-            with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
-                output = model(images)
-            torch.xpu.synchronize()
-            elapsed = time.time() - elapsed
-            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-            if i >= args.num_warmup:
-                total_sample += args.batch_size
-                total_time += elapsed
-            if args.profile and i == profile_len:
-                import pathlib
-                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                if not os.path.exists(timeline_dir):
-                    try:
-                        os.makedirs(timeline_dir)
-                    except:
-                        pass
-                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
-                    timeline_dir+'profile.pt')
-                torch.save(prof.key_averages(group_by_input_shape=True).table(),
-                    timeline_dir+'profile_detail.pt')
-                torch.save(prof.table(sort_by="id", row_limit=100000),
-                    timeline_dir+'profile_detail_withId.pt')
-                prof.export_chrome_trace(timeline_dir+"trace.json")
-    elif args.profile and args.device == "cuda":
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-            record_shapes=True,
-            schedule=torch.profiler.schedule(
-                wait=profile_len,
-                warmup=2,
-                active=1,
-            ),
-            on_trace_ready=trace_handler,
-        ) as p:
-            for i, batch in enumerate(data_loader):
-                if i >= args.num_iter:
-                    break
-
-                images = batch[0]
-                if args.channels_last:
-                    images = images.to(memory_format=torch.channels_last)
-                if args.jit and i == 0:
-                    try:
-                        images = images.to(device, non_blocking=True)
-                        model = torch.jit.trace(model, images, check_trace=False, strict=False)
-                        print("---- JIT trace enable.")
-                    except (RuntimeError, TypeError) as e:
-                        print("---- JIT trace disable.")
-                        print("failed to use PyTorch jit mode due to: ", e)
-
-                elapsed = time.time()
-                images = images.to(device, non_blocking=True)
-                with torch.jit.fuser(fuser_mode):
-                    output = model(images)
-                torch.cuda.synchronize()
-                elapsed = time.time() - elapsed
-                p.step()
-                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-                if i >= args.num_warmup:
-                    total_sample += args.batch_size
-                    total_time += elapsed
-    elif args.profile and args.device == "cpu":
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CPU],
-            record_shapes=True,
-            schedule=torch.profiler.schedule(
-                wait=profile_len,
-                warmup=2,
-                active=1,
-            ),
-            on_trace_ready=trace_handler,
-        ) as p:
-            for i, batch in enumerate(data_loader):
-                if i >= args.num_iter:
-                    break
-
-                images = batch[0]
-                if args.channels_last:
-                    images = images.to(memory_format=torch.channels_last)
-                if args.jit and i == 0:
-                    try:
-                        images = images.to(device, non_blocking=True)
-                        model = torch.jit.trace(model, images, check_trace=False, strict=False)
-                        print("---- JIT trace enable.")
-                    except (RuntimeError, TypeError) as e:
-                        print("---- JIT trace disable.")
-                        print("failed to use PyTorch jit mode due to: ", e)
-
-                elapsed = time.time()
-                images = images.to(device, non_blocking=True)
-                output = model(images)
-                elapsed = time.time() - elapsed
-                p.step()
-                print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-                if i >= args.num_warmup:
-                    total_sample += args.batch_size
-                    total_time += elapsed
-    elif not args.profile and args.device == "cuda":
-        for i, batch in enumerate(data_loader):
-            if i >= args.num_iter:
-                break
-
-            images = batch[0]
-            images = images.to(device, non_blocking=True)
-            if args.channels_last:
-                images = images.to(memory_format=torch.channels_last)
-            if args.jit and i == 0:
-                try:
-                    images = images.to(device, non_blocking=True)
-                    model = torch.jit.trace(model, images, check_trace=False, strict=False)
-                    print("---- JIT trace enable.")
-                except (RuntimeError, TypeError) as e:
-                    print("---- JIT trace disable.")
-                    print("failed to use PyTorch jit mode due to: ", e)
-
-            elapsed = time.time()
-            images = images.to(device, non_blocking=True)
-            with torch.jit.fuser(fuser_mode):
-                output = model(images)
-            torch.cuda.synchronize()
-            elapsed = time.time() - elapsed
-            print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
-            if i >= args.num_warmup:
-                total_sample += args.batch_size
-                total_time += elapsed
-    else:
+    with context_func(args.profile, args.device, fuser_mode='none', schedule_disable='yes') as prof:
         for i, batch in enumerate(data_loader):
             if i >= args.num_iter:
                 break
@@ -339,6 +195,8 @@ def evaluate(args, data_loader, model, device, use_amp=False):
             output = model(images)
             if args.device == "xpu":
                 torch.xpu.synchronize()
+            elif args.device == "cuda":
+                torch.cuda.synchronize()
             elapsed = time.time() - elapsed
             print("Iteration: {}, inference time: {} sec.".format(i, elapsed), flush=True)
             if i >= args.num_warmup:

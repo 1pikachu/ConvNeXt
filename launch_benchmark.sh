@@ -8,6 +8,8 @@ function main {
     fetch_device_info
     set_environment
 
+
+    cp oob-common/context_func.py .
     # requirements
     pip install timm==0.4.5 tensorboardX six protobuf==3.20.1 --no-deps
 
